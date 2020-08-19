@@ -1,4 +1,10 @@
-qt5_add_dbus_interface(lockdevice_SRCS org.freedesktop.ScreenSaver.xml screensaverdbusinterface)
+set_source_files_properties(
+    org.freedesktop.DBus.Properties.xml
+    PROPERTIES
+    NO_NAMESPACE ON)
+
+qt5_add_dbus_interface(lockdevice_SRCS org.freedesktop.login1.xml screensaverdbusinterface)
+qt5_add_dbus_interface(lockdevice_SRCS org.freedesktop.DBus.Properties.xml propsdbusinterface)
 
 set(debug_file_SRCS)
 ecm_qt_declare_logging_category(

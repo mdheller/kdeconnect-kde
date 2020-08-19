@@ -10,30 +10,49 @@
 #include <KPluginFactory>
 
 #include <QDebug>
-#include "screensaverdbusinterface.h"
 #include "plugin_lock_debug.h"
 
 #include <core/device.h>
 #include <dbushelper.h>
+
+#include <QTimer>
+
 
 K_PLUGIN_CLASS_WITH_JSON(LockDevicePlugin, "kdeconnect_lockdevice.json")
 
 LockDevicePlugin::LockDevicePlugin(QObject* parent, const QVariantList& args)
     : KdeConnectPlugin(parent, args)
     , m_remoteLocked(false)
-    , m_iface(nullptr)
+    , m_iface(QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1/session/auto"), QDBusConnection::systemBus())
+    , m_propertiesInterface(QStringLiteral("org.freedesktop.login1"), QString(), QDBusConnection::systemBus())
 {
+    connect(&m_propertiesInterface, &OrgFreedesktopDBusPropertiesInterface::PropertiesChanged, this, [this](const QString& interface, const QVariantMap& properties, QStringList invalidatedProperties ) {
+
+        if (interface != QLatin1String("org.freedesktop.login1.Session")) {
+            return;
+        }
+
+        if (!properties.contains(QStringLiteral("LockedHint"))) {
+            return;
+        }
+
+        m_localLocked = properties.value(QStringLiteral("LockedHint")).toBool();
+        qDebug() << "Change" << m_localLocked;
+        sendState();
+    });
+
+    m_localLocked = m_iface.lockedHint();
 }
 
 LockDevicePlugin::~LockDevicePlugin()
 {
-    delete m_iface;
 }
 
 bool LockDevicePlugin::isLocked() const
 {
     return m_remoteLocked;
 }
+
 void LockDevicePlugin::setLocked(bool locked)
 {
     NetworkPacket np(PACKET_TYPE_LOCK_REQUEST, {{QStringLiteral("setLocked"), locked}});
@@ -50,27 +69,29 @@ bool LockDevicePlugin::receivePacket(const NetworkPacket & np)
         }
     }
 
-    bool sendState = np.has(QStringLiteral("requestLocked"));
-    if (np.has(QStringLiteral("setLocked"))) {
-        iface()->SetActive(np.get<bool>(QStringLiteral("setLocked")));
-        sendState = true;
+    if (np.has(QStringLiteral("requestLocked"))) {
+        sendState();
     }
-    if (sendState) {
-        NetworkPacket np(PACKET_TYPE_LOCK, QVariantMap {{QStringLiteral("isLocked"), QVariant::fromValue<bool>(iface()->GetActive())}});
-        sendPacket(np);
+
+    if (np.has(QStringLiteral("setLocked"))) {
+        const bool lock = np.get<bool>(QStringLiteral("setLocked"));
+
+        if (lock) {
+            m_iface.Lock();
+        } else {
+            m_iface.Unlock();
+        }
+
+        sendState();
     }
 
     return true;
 }
 
-OrgFreedesktopScreenSaverInterface* LockDevicePlugin::iface()
+void LockDevicePlugin::sendState()
 {
-    if (!m_iface) {
-        m_iface = new OrgFreedesktopScreenSaverInterface(QStringLiteral("org.freedesktop.ScreenSaver"), QStringLiteral("/org/freedesktop/ScreenSaver"), DBusHelper::sessionBus());
-        if(!m_iface->isValid())
-            qCWarning(KDECONNECT_PLUGIN_LOCKREMOTE) << "Couldn't connect to the ScreenSaver interface";
-    }
-    return m_iface;
+    NetworkPacket np(PACKET_TYPE_LOCK, {{QStringLiteral("isLocked"), m_localLocked}});
+    sendPacket(np);
 }
 
 void LockDevicePlugin::connected()
