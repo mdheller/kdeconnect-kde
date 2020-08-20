@@ -55,6 +55,7 @@ bool LockDevicePlugin::isLocked() const
 
 void LockDevicePlugin::setLocked(bool locked)
 {
+    qDebug() << "set locked" << locked;
     NetworkPacket np(PACKET_TYPE_LOCK_REQUEST, {{QStringLiteral("setLocked"), locked}});
     sendPacket(np);
 }
@@ -81,6 +82,8 @@ bool LockDevicePlugin::receivePacket(const NetworkPacket & np)
         } else {
             m_iface.Unlock();
         }
+
+        qDebug() << m_iface.lastError();
 
         sendState();
     }

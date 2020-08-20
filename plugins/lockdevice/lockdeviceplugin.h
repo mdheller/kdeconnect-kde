@@ -38,7 +38,7 @@ public:
     bool receivePacket(const NetworkPacket & np) override;
 
 Q_SIGNALS:
-    void lockedChanged(bool locked);
+    Q_SCRIPTABLE void lockedChanged(bool locked);
 
 private:
 
